@@ -19,30 +19,30 @@ def connect_to_mongo():
 
 @app.route('/scan', methods=['POST'])
 def scan_rfid():
-    uid = request.json.get('uid')
-    
-    if not uid:
-        return jsonify({"error": "No UID provided"}), 400
-
-    db = connect_to_mongo()
-    if not db:
-        return jsonify({"error": "Database connection failed"}), 500
-
-    collection = db["users"]  # MongoDB collection
-
     try:
-        # Check if UID exists in the database
+        uid = request.json.get('uid')
+
+        if not uid:
+            return jsonify({"error": "No UID provided"}), 400
+
+        db = connect_to_mongo()
+        if db is None:
+            return jsonify({"error": "Database connection failed"}), 500
+
+        collection = db["users"]
+
+        # Check if the UID exists in the database
         user = collection.find_one({"rfid_UID": uid})
 
         if user:
             print(f"✅ UID {uid} already exists in the database.")
             return jsonify({"message": "UID already registered", "coins": user["coin"]}), 200
         else:
-            # Insert new record if UID doesn't exist
+            # Insert a new record if the UID doesn't exist
             collection.insert_one({"rfid_UID": uid, "total_recycled": 0, "coin": 0.00})
             print(f"🆕 New UID {uid} added to the database.")
             return jsonify({"message": "UID registered successfully", "coins": 0.00}), 200
-        
+
     except Exception as e:
         print(f"❌ Error: {e}")
         return jsonify({"error": "Database operation failed", "details": str(e)}), 500
