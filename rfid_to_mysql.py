@@ -19,39 +19,34 @@ def connect_to_mongo():
 
 @app.route('/scan', methods=['POST'])
 def scan_rfid():
-    # Get UID from the incoming request
     uid = request.json.get('uid')
     
     if not uid:
         return jsonify({"error": "No UID provided"}), 400
 
-    # Connect to MongoDB
     db = connect_to_mongo()
     if not db:
         return jsonify({"error": "Database connection failed"}), 500
 
-    # Reference to the 'users' collection in the database
-    collection = db["users"]
+    collection = db["users"]  # MongoDB collection
 
     try:
-        # Check if UID already exists in the database
+        # Check if UID exists in the database
         user = collection.find_one({"rfid_UID": uid})
 
         if user:
-            # UID already exists, print and return message
             print(f"✅ UID {uid} already exists in the database.")
+            return jsonify({"message": "UID already registered", "coins": user["coin"]}), 200
         else:
-            # If UID doesn't exist, insert it into the database
+            # Insert new record if UID doesn't exist
             collection.insert_one({"rfid_UID": uid, "total_recycled": 0, "coin": 0.00})
             print(f"🆕 New UID {uid} added to the database.")
+            return jsonify({"message": "UID registered successfully", "coins": 0.00}), 200
         
-        # Return success response
-        return jsonify({"message": "UID processed successfully!"}), 200
-
     except Exception as e:
-        # Handle any other exceptions
         print(f"❌ Error: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Database operation failed", "details": str(e)}), 500
+
 
 if __name__ == '__main__':
     # Run the Flask server on port 5000 and make it accessible on all IPs
