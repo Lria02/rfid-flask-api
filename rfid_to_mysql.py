@@ -28,37 +28,45 @@ def connect_to_database():
 
 @app.route('/scan', methods=['POST'])
 def scan_rfid():
-    """Register a scanned RFID ID in the database."""
+    """Receive scanned RFID UID and register it in the database if it does not already exist."""
     try:
-        # Retrieve the JSON payload and extract the scanned UID
+        # Parse the JSON payload for the UID
         data = request.get_json()
         uid = data.get("uid")
         if not uid:
-            return jsonify({"error": "Missing 'uid' field in request body"}), 400
-
-        print(f"Registering scanned ID: {uid}")
-
+            return jsonify({'error': "Missing 'uid' field in request"}), 400
+        
         # Connect to the database
-        connection = connect_to_database()
-        if not connection:
-            return jsonify({"error": "Database connection failed"}), 500
-
-        cursor = connection.cursor()
-
-        # Insert the scanned ID into the 'rfid_scans' table.
-        # Ensure that your MySQL database has a table named 'rfid_scans' with at least one column 'uid'.
-        query = "INSERT INTO rfid_scans (uid) VALUES (%s)"
-        cursor.execute(query, (uid,))
-        connection.commit()
-
+        db = connect_to_database()
+        if not db:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = db.cursor()
+        
+        # Check if the UID already exists in the 'rfid_scans' table
+        select_query = "SELECT COUNT(*) FROM rfid_scans WHERE uid = %s"
+        cursor.execute(select_query, (uid,))
+        count = cursor.fetchone()[0]
+        
+        if count > 0:
+            # UID already exists in the database
+            message = 'existing'
+        else:
+            # Insert the new UID into the database
+            insert_query = "INSERT INTO rfid_scans (uid) VALUES (%s)"
+            cursor.execute(insert_query, (uid,))
+            db.commit()
+            message = 'registered'
+        
         cursor.close()
-        connection.close()
-
-        return jsonify({"message": "Scanned ID registered successfully"}), 200
+        db.close()
+        
+        print(f"Processed UID: {uid} -> {message}")
+        return jsonify({'message': message}), 200
 
     except Exception as e:
         print(f"Error during scan: {e}")
-        return jsonify({"error": "An error occurred while processing the scan"}), 500
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     print("Starting Flask app...")
