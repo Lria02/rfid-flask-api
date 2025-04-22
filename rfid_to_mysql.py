@@ -16,23 +16,31 @@ def connect_to_database():
     try:
         connection = mysql.connector.connect(**DB_CONFIG)
         if connection.is_connected():
-            print("✅ Connected to InfinityFree MySQL database.")
+            print("✅ Connected to Aiven MySQL database.")
             return connection
     except Error as e:
         print(f"❌ DB Connection Error: {e}")
         return None
 
+    if connection is None:
+        print("Database connection failed.")  # Debug: Connection failure
+        return jsonify({'error': 'Database connection failed'}), 500
+    print("Database connection successful.")
+
 @app.route('/scan', methods=['POST'])
 def scan_rfid():
     try:
         data = request.get_json()
+        print(f"Incoming request data: {data}")
         uid = data.get('uid')
 
         if not uid or len(uid) < 4:
+            print("Invalid UID received.")  # Log invalid UID
             return jsonify({'error': 'Invalid UID'}), 400
 
         db = connect_to_database()
         if db is None:
+            print("Database connection failed during scan.")  # Log DB connection failure
             return jsonify({'error': 'Database connection failed'}), 500
 
         cursor = db.cursor()
@@ -40,13 +48,16 @@ def scan_rfid():
         result = cursor.fetchone()
 
         if result:
+            print(f"UID {uid} found in the database.")  # Log UID found
             response = {'message': '✅ UID already exists'}
         else:
+            print(f"UID {uid} not found. Registering new UID.")  # Log UID registration
             cursor.execute(
                 "INSERT INTO users (rfid_UID, total_recycled, coin) VALUES (%s, 0, 0.00)",
                 (uid,)
             )
             db.commit()
+            print(f"UID {uid} successfully registered.")  # Log successful registration
             response = {'message': f'🆕 UID {uid} registered'}
 
         cursor.close()
@@ -54,8 +65,9 @@ def scan_rfid():
         return jsonify(response), 200
 
     except Exception as e:
+        print(f"Error during RFID scan: {e}")  # Log exception
         return jsonify({'error': str(e)}), 500
 
-# Start server
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)  # Render will override this port
+# filepath: c:\Users\Lria\Desktop\arduino\rfid_to_mysql.py
+# if __name__ == '__main__':
+#     app.run(host='0.0.0.0', port=10000)  # Render will override this port
