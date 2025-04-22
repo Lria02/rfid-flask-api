@@ -9,7 +9,7 @@ DB_CONFIG = {
     'host': 'mysql-a920a0-tanginarduino.k.aivencloud.com',
     'user': 'avnadmin',
     'password': 'AVNS_NW5T9_kZefmCceB6eA2',
-    'database': 'arduino'
+    'database': 'defaultdb'
 }
 
 def connect_to_database():
