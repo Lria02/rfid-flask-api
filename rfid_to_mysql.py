@@ -6,10 +6,10 @@ app = Flask(__name__)
 
 # InfinityFree MySQL config
 DB_CONFIG = {
-    'host': 'sql100.infinityfree.com',
-    'user': 'if0_38808215',
-    'password': 'd2tN8zHet8GLsCy',
-    'database': 'if0_38808215_dbarduino'
+    'host': 'mysql-a920a0-tanginarduino.k.aivencloud.com',
+    'user': 'avnadmin',
+    'password': 'AVNS_NW5T9_kZefmCceB6eA2',
+    'database': 'arduino'
 }
 
 def connect_to_database():
