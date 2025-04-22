@@ -1,18 +1,15 @@
-import serial
+from flask import Flask, request, jsonify
 import mysql.connector
 from mysql.connector import Error
-import time
 
-# Serial config
-SERIAL_PORT = 'COM5'  # Change this!
-BAUD_RATE = 9600
+app = Flask(__name__)
 
 # InfinityFree MySQL config
 DB_CONFIG = {
-    'host': 'sql100.infinityfree.com',        # Replace with your actual DB host
-    'user': 'if0_38808215',           # Replace with your InfinityFree DB user
-    'password': 'd2tN8zHet8GLsCy',  # Replace with your InfinityFree DB password
-    'database': 'if0_38808215_dbarduino' # Replace with your DB name
+    'host': 'sql100.infinityfree.com',
+    'user': 'if0_38808215',
+    'password': 'd2tN8zHet8GLsCy',
+    'database': 'if0_38808215_dbarduino'
 }
 
 def connect_to_database():
@@ -22,54 +19,43 @@ def connect_to_database():
             print("✅ Connected to InfinityFree MySQL database.")
             return connection
     except Error as e:
-        print(f"❌ Error: {e}")
+        print(f"❌ DB Connection Error: {e}")
         return None
 
-def main():
+@app.route('/scan', methods=['POST'])
+def scan_rfid():
     try:
-        ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
-        print(f"📡 Listening on {SERIAL_PORT} at {BAUD_RATE} baud...")
-        time.sleep(2)
-    except Exception as e:
-        print(f"❌ Serial error: {e}")
-        return
+        data = request.get_json()
+        uid = data.get('uid')
 
-    db = connect_to_database()
-    if not db:
-        return
+        if not uid or len(uid) < 4:
+            return jsonify({'error': 'Invalid UID'}), 400
 
-    cursor = db.cursor()
+        db = connect_to_database()
+        if db is None:
+            return jsonify({'error': 'Database connection failed'}), 500
 
-    try:
-        while True:
-            uid = ser.readline().decode().strip()
+        cursor = db.cursor()
+        cursor.execute("SELECT * FROM users WHERE rfid_UID = %s", (uid,))
+        result = cursor.fetchone()
 
-            if not uid or "Scan" in uid:
-                continue
+        if result:
+            response = {'message': '✅ UID already exists'}
+        else:
+            cursor.execute(
+                "INSERT INTO users (rfid_UID, total_recycled, coin) VALUES (%s, 0, 0.00)",
+                (uid,)
+            )
+            db.commit()
+            response = {'message': f'🆕 UID {uid} registered'}
 
-            print(f"📨 UID Received: {uid}")
-            
-            cursor.execute("SELECT * FROM users WHERE rfid_UID = %s", (uid,))
-            result = cursor.fetchone()
-
-            if result:
-                print("✅ UID already exists in database.")
-            else:
-                cursor.execute(
-                    "INSERT INTO users (rfid_UID, total_recycled, coin) VALUES (%s, 0, 0.00)",
-                    (uid,)
-                )
-                db.commit()
-                print(f"🆕 New UID added to database: {uid}")
-
-            time.sleep(0.1)
-
-    except KeyboardInterrupt:
-        print("\n👋 Exiting...")
-    finally:
-        ser.close()
         cursor.close()
         db.close()
+        return jsonify(response), 200
 
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Start server
 if __name__ == '__main__':
-    main()
+    app.run(host='0.0.0.0', port=10000)  # Render will override this port
