@@ -1,53 +1,75 @@
-from flask import Flask, request, jsonify
-from pymongo import MongoClient
-from pymongo.errors import ConnectionFailure  # Updated import
+import serial
+import mysql.connector
+from mysql.connector import Error
+import time
 
-# MongoDB connection details
-MONGO_URI = "mongodb+srv://asunayuuki2435:Luxuria2024@cluster0.cba9vgk.mongodb.net/arduinoDB?retryWrites=true&w=majority"
+# Serial config
+SERIAL_PORT = 'COM5'  # Change this!
+BAUD_RATE = 9600
 
-app = Flask(__name__)
+# InfinityFree MySQL config
+DB_CONFIG = {
+    'host': 'sql100.infinityfree.com',        # Replace with your actual DB host
+    'user': 'if0_38808215',           # Replace with your InfinityFree DB user
+    'password': 'd2tN8zHet8GLsCy',  # Replace with your InfinityFree DB password
+    'database': 'if0_38808215_dbarduino' # Replace with your DB name
+}
 
-def connect_to_mongo():
+def connect_to_database():
     try:
-        # Establishing connection to MongoDB
-        client = MongoClient(MONGO_URI)
-        db = client["arduinoDB"]  # This is the newly created database
-        return db
-    except ConnectionFailure as e:  # Handle connection failure
-        print(f"❌ Error connecting to MongoDB: {e}")
+        connection = mysql.connector.connect(**DB_CONFIG)
+        if connection.is_connected():
+            print("✅ Connected to InfinityFree MySQL database.")
+            return connection
+    except Error as e:
+        print(f"❌ Error: {e}")
         return None
 
-@app.route('/scan', methods=['POST'])
-def scan_rfid():
+def main():
     try:
-        uid = request.json.get('uid')
-
-        if not uid:
-            return jsonify({"error": "No UID provided"}), 400
-
-        db = connect_to_mongo()
-        if db is None:
-            return jsonify({"error": "Database connection failed"}), 500
-
-        collection = db["users"]
-
-        # Check if the UID exists in the database
-        user = collection.find_one({"rfid_UID": uid})
-
-        if user:
-            print(f"✅ UID {uid} already exists in the database.")
-            return jsonify({"message": "UID already registered", "coins": user["coin"]}), 200
-        else:
-            # Insert a new record if the UID doesn't exist
-            collection.insert_one({"rfid_UID": uid, "total_recycled": 0, "coin": 0.00})
-            print(f"🆕 New UID {uid} added to the database.")
-            return jsonify({"message": "UID registered successfully", "coins": 0.00}), 200
-
+        ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
+        print(f"📡 Listening on {SERIAL_PORT} at {BAUD_RATE} baud...")
+        time.sleep(2)
     except Exception as e:
-        print(f"❌ Error: {e}")
-        return jsonify({"error": "Database operation failed", "details": str(e)}), 500
+        print(f"❌ Serial error: {e}")
+        return
 
+    db = connect_to_database()
+    if not db:
+        return
+
+    cursor = db.cursor()
+
+    try:
+        while True:
+            uid = ser.readline().decode().strip()
+
+            if not uid or "Scan" in uid:
+                continue
+
+            print(f"📨 UID Received: {uid}")
+            
+            cursor.execute("SELECT * FROM users WHERE rfid_UID = %s", (uid,))
+            result = cursor.fetchone()
+
+            if result:
+                print("✅ UID already exists in database.")
+            else:
+                cursor.execute(
+                    "INSERT INTO users (rfid_UID, total_recycled, coin) VALUES (%s, 0, 0.00)",
+                    (uid,)
+                )
+                db.commit()
+                print(f"🆕 New UID added to database: {uid}")
+
+            time.sleep(0.1)
+
+    except KeyboardInterrupt:
+        print("\n👋 Exiting...")
+    finally:
+        ser.close()
+        cursor.close()
+        db.close()
 
 if __name__ == '__main__':
-    # Run the Flask server on port 5000 and make it accessible on all IPs
-    app.run(host='0.0.0.0', port=5000)
+    main()
