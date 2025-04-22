@@ -26,47 +26,73 @@ def connect_to_database():
         print(f"Database connection error: {e}")
     return None
 
+@app.route('/')
+def index():
+    return "Hello, Flask is running!"
+
+@app.route('/testdb', methods=['GET'])
+def test_database_connection():
+    """Test database connection independently."""
+    try:
+        print("🔍 Testing database connection...")
+        db = connect_to_database()
+        if db:
+            print("✅ Database connection successful!")
+            db.close()
+            return jsonify({'message': 'Database connection successful'}), 200
+        else:
+            print("❌ Database connection failed.")
+            return jsonify({'error': 'Database connection failed'}), 500
+    except Exception as e:
+        print(f"❌ Error during database test: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/scan', methods=['POST'])
 def scan_rfid():
-    """Receive scanned RFID UID and register it in the database if it does not already exist."""
+    """Register a scanned RFID ID in the 'users' table or check if it already exists."""
     try:
-        # Parse the JSON payload for the UID
+        # Retrieve the JSON payload and extract the scanned UID
         data = request.get_json()
         uid = data.get("uid")
         if not uid:
-            return jsonify({'error': "Missing 'uid' field in request"}), 400
-        
+            return jsonify({"error": "Missing 'uid' field in request"}), 400
+
+        print(f"Processing scanned ID: {uid}")
+
         # Connect to the database
-        db = connect_to_database()
-        if not db:
-            return jsonify({'error': 'Database connection failed'}), 500
-        
-        cursor = db.cursor()
-        
-        # Check if the UID already exists in the 'rfid_scans' table
-        select_query = "SELECT COUNT(*) FROM rfid_scans WHERE uid = %s"
-        cursor.execute(select_query, (uid,))
-        count = cursor.fetchone()[0]
-        
-        if count > 0:
-            # UID already exists in the database
-            message = 'existing'
+        connection = connect_to_database()
+        if not connection:
+            return jsonify({"error": "Database connection failed"}), 500
+
+        cursor = connection.cursor()
+
+        # Check if the UID already exists in the 'users' table
+        check_query = "SELECT * FROM users WHERE rfid_UID = %s"
+        cursor.execute(check_query, (uid,))
+        result = cursor.fetchone()
+
+        if result:
+            # UID already exists
+            print(f"UID {uid} already exists in the database.")
+            cursor.close()
+            connection.close()
+            return jsonify({"message": "existing"}), 200
         else:
-            # Insert the new UID into the database
-            insert_query = "INSERT INTO rfid_scans (uid) VALUES (%s)"
+            # Insert the new UID into the 'users' table
+            insert_query = "INSERT INTO users (rfid_UID, total_recycled, coins) VALUES (%s, 0, 0.00)"
             cursor.execute(insert_query, (uid,))
-            db.commit()
-            message = 'registered'
-        
-        cursor.close()
-        db.close()
-        
-        print(f"Processed UID: {uid} -> {message}")
-        return jsonify({'message': message}), 200
+            connection.commit()
+            print(f"UID {uid} registered successfully.")
+            cursor.close()
+            connection.close()
+            return jsonify({"message": "registered"}), 200
 
     except Exception as e:
         print(f"Error during scan: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"error": "An error occurred while processing the scan"}), 500
+
+print("Registered URLs:")
+print(app.url_map)
 
 if __name__ == '__main__':
     print("Starting Flask app...")
