@@ -90,6 +90,117 @@ def scan_rfid():
     except Exception as e:
         print(f"Error during scan: {e}")
         return jsonify({"error": "An error occurred while processing the scan"}), 500
+@app.route('/sensor', methods=['POST'])
+def process_sensor_data():
+    """Update coins and total_recycled when a plastic bottle is detected."""
+    try:
+        # Retrieve the JSON payload
+        data = request.get_json()
+        uid = data.get("uid")  # UID to identify the user
+        if not uid:
+            return jsonify({"error": "Missing 'uid' field in request"}), 400
+        
+        print(f"Processing sensor event for UID: {uid}")
+
+        # Connect to the database
+        connection = connect_to_database()
+        if not connection:
+            return jsonify({"error": "Database connection failed"}), 500
+
+        cursor = connection.cursor()
+
+        # Check if the UID exists in the 'users' table
+        check_query = "SELECT total_recycled, coins FROM users WHERE rfid_UID = %s"
+        cursor.execute(check_query, (uid,))
+        result = cursor.fetchone()
+
+        if result:
+            # Increment values for coins and total_recycled
+            total_recycled, coins = result
+            total_recycled += 1
+            coins += 0.15
+
+            update_query = "UPDATE users SET total_recycled = %s, coins = %s WHERE rfid_UID = %s"
+            cursor.execute(update_query, (total_recycled, coins, uid))
+            connection.commit()
+            
+            print(f"Updated UID {uid}: total_recycled={total_recycled}, coins={coins}")
+            cursor.close()
+            connection.close()
+            return jsonify({
+                "message": "Values updated",
+                "uid": uid,
+                "total_recycled": total_recycled,
+                "coins": coins
+            }), 200
+        else:
+            # UID not found
+            cursor.close()
+            connection.close()
+            return jsonify({"error": "UID not found"}), 404
+
+    except Exception as e:
+        print(f"Error during sensor event: {e}")
+        return jsonify({"error": "An error occurred while processing the sensor data"}), 500
+
+@app.route('/redeem', methods=['POST'])
+def redeem_coins():
+    """Handle coin redemption for a given UID."""
+    try:
+        # Retrieve the JSON payload and extract the UID
+        data = request.get_json()
+        uid = data.get("uid")
+        if not uid:
+            return jsonify({"error": "Missing 'uid' field in request"}), 400
+
+        print(f"Processing redemption for UID: {uid}")
+
+        # Connect to the database
+        connection = connect_to_database()
+        if not connection:
+            return jsonify({"error": "Database connection failed"}), 500
+
+        cursor = connection.cursor()
+
+        # Check the current coin balance for the UID
+        check_query = "SELECT coins FROM users WHERE rfid_UID = %s"
+        cursor.execute(check_query, (uid,))
+        result = cursor.fetchone()
+
+        if not result:
+            # UID not found
+            print(f"UID {uid} not found in the database.")
+            cursor.close()
+            connection.close()
+            return jsonify({"error": "UID not found"}), 404
+
+        # Calculate the number of whole coins that can be redeemed
+        current_coins = float(result[0])
+        redeemable_coins = int(current_coins)  # Whole number of coins
+
+        if redeemable_coins == 0:
+            print(f"UID {uid} has no redeemable coins.")
+            cursor.close()
+            connection.close()
+            return jsonify({"message": "No coins to redeem", "coins": 0}), 200
+
+        # Update the database: Deduct redeemed coins
+        updated_coins = current_coins - redeemable_coins
+        update_query = "UPDATE users SET coins = %s WHERE rfid_UID = %s"
+        cursor.execute(update_query, (updated_coins, uid))
+        connection.commit()
+
+        print(f"Redeemed {redeemable_coins} coins for UID {uid}. New balance: {updated_coins}")
+        cursor.close()
+        connection.close()
+
+        # Return the number of coins to dispense
+        return jsonify({"message": "Coins redeemed", "coins": redeemable_coins}), 200
+
+    except Exception as e:
+        print(f"Error during coin redemption: {e}")
+        return jsonify({"error": "An error occurred during coin redemption"}), 500
+
 
 print("Registered URLs:")
 print(app.url_map)
