@@ -30,23 +30,6 @@ def connect_to_database():
 def index():
     return "Hello, Flask is running!"
 
-@app.route('/testdb', methods=['GET'])
-def test_database_connection():
-    """Test database connection independently."""
-    try:
-        print("🔍 Testing database connection...")
-        db = connect_to_database()
-        if db:
-            print("✅ Database connection successful!")
-            db.close()
-            return jsonify({'message': 'Database connection successful'}), 200
-        else:
-            print("❌ Database connection failed.")
-            return jsonify({'error': 'Database connection failed'}), 500
-    except Exception as e:
-        print(f"❌ Error during database test: {e}")
-        return jsonify({'error': str(e)}), 500
-
 @app.route('/scan', methods=['POST'])
 def scan_rfid():
     """Register a scanned RFID ID in the 'users' table or check if it already exists."""
@@ -90,57 +73,25 @@ def scan_rfid():
     except Exception as e:
         print(f"Error during scan: {e}")
         return jsonify({"error": "An error occurred while processing the scan"}), 500
+
 @app.route('/sensor', methods=['POST'])
 def process_sensor_data():
-    """Update coins and total_recycled when a plastic bottle is detected."""
+    """Handle bottle detection and signal RFID scan request."""
     try:
         # Retrieve the JSON payload
         data = request.get_json()
-        uid = data.get("uid")  # UID to identify the user
-        if not uid:
-            return jsonify({"error": "Missing 'uid' field in request"}), 400
+        bottle_detected = data.get("bottle_detected")
+        if bottle_detected is None:
+            return jsonify({"error": "Missing 'bottle_detected' field in request"}), 400
         
-        print(f"Processing sensor event for UID: {uid}")
+        print("Bottle detected, ready for RFID scan.")
 
-        # Connect to the database
-        connection = connect_to_database()
-        if not connection:
-            return jsonify({"error": "Database connection failed"}), 500
-
-        cursor = connection.cursor()
-
-        # Check if the UID exists in the 'users' table
-        check_query = "SELECT total_recycled, coins FROM users WHERE rfid_UID = %s"
-        cursor.execute(check_query, (uid,))
-        result = cursor.fetchone()
-
-        if result:
-            # Increment values for coins and total_recycled
-            total_recycled, coins = result
-            total_recycled += 1
-            coins += 0.15
-
-            update_query = "UPDATE users SET total_recycled = %s, coins = %s WHERE rfid_UID = %s"
-            cursor.execute(update_query, (total_recycled, coins, uid))
-            connection.commit()
-            
-            print(f"Updated UID {uid}: total_recycled={total_recycled}, coins={coins}")
-            cursor.close()
-            connection.close()
-            return jsonify({
-                "message": "Values updated",
-                "uid": uid,
-                "total_recycled": total_recycled,
-                "coins": coins
-            }), 200
-        else:
-            # UID not found
-            cursor.close()
-            connection.close()
-            return jsonify({"error": "UID not found"}), 404
+        # Notify the ESP32 to start the scan
+        # This can be expanded later to handle more logic based on the sensor data
+        return jsonify({"message": "Bottle detected, waiting for RFID scan"}), 200
 
     except Exception as e:
-        print(f"Error during sensor event: {e}")
+        print(f"Error during bottle detection: {e}")
         return jsonify({"error": "An error occurred while processing the sensor data"}), 500
 
 @app.route('/redeem', methods=['POST'])
