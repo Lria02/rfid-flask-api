@@ -73,8 +73,10 @@ def scan_rfid():
     except Exception as e:
         print(f"Error during scan: {e}")
         return jsonify({"error": "An error occurred while processing the scan"}), 500
-    @app.route('/sensor', methods=['POST'])
+
+@app.route('/sensor', methods=['POST'])
 def handle_bottle_with_uid():
+    """Handle bottle recycling with UID and increment coins."""
     data = request.get_json()
     uid = data.get('uid')
 
