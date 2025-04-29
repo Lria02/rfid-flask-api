@@ -73,26 +73,41 @@ def scan_rfid():
     except Exception as e:
         print(f"Error during scan: {e}")
         return jsonify({"error": "An error occurred while processing the scan"}), 500
+    @app.route('/sensor', methods=['POST'])
+def handle_bottle_with_uid():
+    data = request.get_json()
+    uid = data.get('uid')
 
-@app.route('/sensor', methods=['POST'])
-def process_sensor_data():
-    """Handle bottle detection and signal RFID scan request."""
-    try:
-        # Retrieve the JSON payload
-        data = request.get_json()
-        bottle_detected = data.get("bottle_detected")
-        if bottle_detected is None:
-            return jsonify({"error": "Missing 'bottle_detected' field in request"}), 400
-        
-        print("Bottle detected, ready for RFID scan.")
+    if not uid:
+        return jsonify({"error": "UID missing"}), 400
 
-        # Notify the ESP32 to start the scan
-        # This can be expanded later to handle more logic based on the sensor data
-        return jsonify({"message": "Bottle detected, waiting for RFID scan"}), 200
+    connection = connect_to_database()
+    if not connection:
+        return jsonify({"error": "Database connection failed"}), 500
 
-    except Exception as e:
-        print(f"Error during bottle detection: {e}")
-        return jsonify({"error": "An error occurred while processing the sensor data"}), 500
+    cursor = connection.cursor()
+
+    # Check if UID exists
+    cursor.execute("SELECT coins FROM users WHERE rfid_UID = %s", (uid,))
+    result = cursor.fetchone()
+
+    if result is None:
+        # UID not registered
+        print(f"UID {uid} not found in database. No recycling allowed.")
+        cursor.close()
+        connection.close()
+        return jsonify({"error": "UID not registered"}), 404
+
+    # UID exists — increment coins
+    current_coins = float(result[0])
+    new_coins = current_coins + 1
+
+    cursor.execute("UPDATE users SET coins = %s WHERE rfid_UID = %s", (new_coins, uid))
+    connection.commit()
+    cursor.close()
+    connection.close()
+
+    return jsonify({"status": "recycled", "coins": new_coins}), 200
 
 @app.route('/redeem', methods=['POST'])
 def redeem_coins():
