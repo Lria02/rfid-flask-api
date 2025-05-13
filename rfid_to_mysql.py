@@ -93,7 +93,7 @@ def handle_bottle_with_uid():
         return jsonify({"error": "UID not registered"}), 404
 
     current_coins = float(result[0])
-    new_coins = current_coins + 1
+    new_coins = current_coins + 0.25
 
     cursor.execute("UPDATE users SET coins = %s WHERE rfid_UID = %s", (new_coins, uid))
     connection.commit()
